@@ -1,0 +1,39 @@
+{
+  "name": "db-cookie-store",
+  "version": "0.1.0",
+  "description": "Store cookies in database",
+  "main": "index.js",
+  "repository":  { 
+      "type" : "git",
+      "url" : "https://github.com/JSBizon/db-cookie-store.git"
+  },
+  "scripts": {
+      "test": "grunt"
+  },
+  "keywords": [
+               "cookie",
+               "jar",
+               "cookiejar",
+               "tough-cookie",
+               "tough-cookie2",
+               "file cookie",
+               "cookie store"
+  ],
+  "devDependencies" : {
+    "expect.js" : "~0.2.0",
+    "mocha" : "~1.20.0",
+    "grunt": "~0.4",
+    "grunt-cli": "~0.1.13",
+    "grunt-mocha-test" : "~0.12.2",
+    "grunt-contrib-jshint" : "~0.10.0"
+  },
+  "dependencies": {
+    "tough-cookie2" : "~0.12.0",
+    "punycode" : "~1.2.3",
+    "sequelize" : "~2.0.0",
+    "sqlite3" : "~3.0.0"
+  },
+  "author": "Dmitry Nizovtsev (https://github.com/JSBizon)",
+  "license": "MIT",
+  "readmeFilename": "README.md"
+}
