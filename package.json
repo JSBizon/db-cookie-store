@@ -2,7 +2,7 @@
   "name": "db-cookie-store",
   "version": "0.1.0",
   "description": "Store cookies in database",
-  "main": "index.js",
+  "main": "lib/store.js",
   "repository":  { 
       "type" : "git",
       "url" : "https://github.com/JSBizon/db-cookie-store.git"
