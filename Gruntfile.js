@@ -9,13 +9,38 @@ module.exports = function(grunt) {
             options: {
               node: true
             },
-            main : ["index.js"]
+            main : ["lib/*.js"]
         },
         mochaTest: {
-            options: {
-                reporter: 'spec'
+            sqlite_test : {
+                options: {
+                    reporter: 'spec',
+                    require: 'test/sqlite-globals',
+                    clearRequireCache: true
+                },
+                
+                src: ['test/*.test.js']
             },
-            src: ['test/*.test.js']
+            /*
+            mysql_test : {
+                options: {
+                    reporter: 'spec',
+                    require: 'test/mysql-globals',
+                    clearRequireCache: true 
+                },
+                src: ['test/*.test.js']
+            },
+            */
+           /*
+            pgsql_test : {
+                options: {
+                    reporter: 'spec',
+                    clearRequireCache: true,
+                    require: 'test/pgsql-globals'
+                },
+                src: ['test/*.test.js']
+            }
+            */
         }
     });
 
