@@ -1,7 +1,23 @@
+var FS = require('fs');
+
+var db_file = __dirname + '/cookies.sqlite';
+
 DB_NAME = 'cookies';
 DB_USERNAME = null;
 DB_PASSWORD = null;
 DB_OPTIONS = {
     dialect : 'sqlite',
-    storage: './cookies.sqlite',
+    //logging : null,
+    storage: db_file
 };
+
+databaseClean = function (cb) {
+	try {
+    	FS.unlinkSync(db_file);
+  	} catch (err) {};
+	cb();
+}
+
+
+
+
