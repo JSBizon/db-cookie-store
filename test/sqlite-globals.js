@@ -11,9 +11,14 @@ DB_OPTIONS = {
     storage: db_file
 };
 
+databaseCreate = function (cb) {
+	cb();
+}
+
+
 databaseClean = function (cb) {
 	try {
-    	FS.unlinkSync(db_file);
+//    	FS.unlinkSync(db_file);
   	} catch (err) {};
 	cb();
 }

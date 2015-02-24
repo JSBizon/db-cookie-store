@@ -21,7 +21,7 @@ module.exports = function(grunt) {
                 
                 src: ['test/*.test.js']
             },
-            /*
+            
             mysql_test : {
                 options: {
                     reporter: 'spec',
@@ -30,7 +30,7 @@ module.exports = function(grunt) {
                 },
                 src: ['test/*.test.js']
             },
-            */
+            
            /*
             pgsql_test : {
                 options: {

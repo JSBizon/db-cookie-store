@@ -12,23 +12,62 @@ function randomStr () {
     return text;
 }
 
+var cookies_table_name;
+
 function getDBStore () {
-    return new DbCookieStore(DB_NAME, DB_USERNAME, DB_PASSWORD, DB_OPTIONS);
+    if (! cookies_table_name) {
+        cookies_table_name = randomStr();
+    }
+    return new DbCookieStore(DB_NAME, DB_USERNAME, DB_PASSWORD, DB_OPTIONS, {
+        cookies_table : cookies_table_name
+    });
+}
+
+function createsCookies () {
+    var cookies = [
+        TOUGH.Cookie.parse('alpha=beta; Domain=example.com; Path=/foo; Expires=Tue, 19 Jan 2038 03:14:07 GMT; HttpOnly'),
+        TOUGH.Cookie.fromJSON({"key":"alpha","value":"beta","domain":"example.com","path":"/foo","expires":"2038-01-19T03:14:07.000Z","httpOnly":true,"lastAccessed":2000000000123}),
+        TOUGH.Cookie.parse("a=b; Domain=example.com; Path=/; HttpOnly"),
+    ];
+
+    /*
+                for (i = 0; i < stores_num; i++) {
+                var key = 'key ' + i;
+                var cookie = new TOUGH.Cookie({
+                    domain : test_domain,
+                    path : '/',
+                    secure : true,
+                    expires : expire,
+                    key : key,
+                    value : 'value ' + i,
+                    httpOnly : false
+                });
+                
+                var func = Q.nbind(cookie_store.putCookie, cookie_store);
+                fns.push(func(cookie));
+                keys.push(key);
+            }
+    */
 }
 
 describe('Test db cookie store', function() { 
-    var cookie_store, cookies_table_name;
     var PARALLEL_WRITES = 10;
     
-    before(function() {         
-        cookie_store = getDBStore();
-        cookies_table_name = randomStr();
+    before(function(done) {
+        this.timeout(10000);
+        if (typeof databaseCreate == 'function') {
+            databaseCreate(function (error) {
+                done(error);
+            });
+        } else {            
+            done();
+        }
     });
 
     after(function (done) {
         if (typeof databaseClean == 'function') {
-            databaseClean(function () {
-                done();
+            databaseClean(function (error) {
+                done(error);
             });
         } else {
             done();
@@ -37,6 +76,7 @@ describe('Test db cookie store', function() {
     
     describe("#constructor", function () {
         it('should create object use db options', function (done) {            
+            var cookie_store = getDBStore();
             expect(cookie_store).to.be.ok();
             expect(cookie_store).to.be.a(DbCookieStore);
 
@@ -50,7 +90,7 @@ describe('Test db cookie store', function() {
             var table_name = randomStr();
                 sequelize = new Sequelize(DB_NAME, DB_USERNAME, DB_PASSWORD, DB_OPTIONS),
                 new_cookie_store = new DbCookieStore(sequelize, {
-                    cookies_table : table_name
+                    cookies_table : cookies_table_name
                 });
 
             expect(new_cookie_store).to.be.ok();
@@ -65,15 +105,12 @@ describe('Test db cookie store', function() {
     });
 
     describe("#putCookie", function () {
-        var sequelize;
+        var sequelize, cookie_store;
 
         beforeEach(function() { 
-            sequelize = new Sequelize(DB_NAME, DB_USERNAME, DB_PASSWORD, DB_OPTIONS);
-            cookie_store = new DbCookieStore(sequelize, {
-                cookies_table : cookies_table_name
-            });
+            cookie_store = getDBStore();
         });
-
+/*
         afterEach(function(done){
             sequelize
                 .getQueryInterface()
@@ -82,7 +119,7 @@ describe('Test db cookie store', function() {
                     done();
                 });
         });
-
+*/
         it('should put new cookie to db', function (done) {
             var domain = 'putcookie.test.com',
                 path = '/',
@@ -130,6 +167,8 @@ describe('Test db cookie store', function() {
         });
 
         it('should mass put cookies', function (done) {
+            this.timeout(10000);
+
             var i=0, 
                 stores_num = PARALLEL_WRITES, 
                 keys = [], 
@@ -159,8 +198,8 @@ describe('Test db cookie store', function() {
 
             Q.all(fns)
                 .then(function () {
-                    var cookie_store = new getDBStore();
-                    return Q.nbind(cookie_store.findCookies, cookie_store)(test_domain,null);
+                    var new_cookie_store = new getDBStore();
+                    return Q.nbind(new_cookie_store.findCookies, new_cookie_store)(test_domain, '/');
                 })
                 .then(function(cookies) {
                     expect(cookies).to.be.a(Array);
@@ -177,9 +216,9 @@ describe('Test db cookie store', function() {
                     keys.forEach(function (key) {
                         expect(map_key_cookie[key]).to.be.a(TOUGH.Cookie);
                     });
-                
-                    done();
                     */
+                    done();
+                    
                 })
                 .catch(function (err){
                     done(err);
@@ -190,6 +229,8 @@ describe('Test db cookie store', function() {
 
 
     describe("#findCookie", function () {
+
+
 
     });
 
