@@ -1,3 +1,5 @@
+var Sequelize = require('sequelize');
+
 DB_TEMPLATE_NAME = 'template1';
 DB_NAME = 'cookies_test';
 DB_USERNAME = 'test';
@@ -15,11 +17,13 @@ function getDb() {
 
 databaseCreate = function(cb) {
     var start_db = getDb();
-    start_db.query("SELECT datname FROM pg_catalog.pg_database WHERE datname = '" + DB_NAME + "'").then(function(dbs) {
+    start_db.query("SELECT datname FROM pg_catalog.pg_database WHERE datname = '" + DB_NAME + "'").spread(function(dbs, metadata) {
+        console.log("select database: ", dbs);
         if (!dbs.length) {
+            console.log("Create database");
             return start_db.query("CREATE DATABASE " + DB_NAME);
         }
-    }).done(function() {
+    }).then(function() {
         cb();
     }).catch(function(error) {
         cb(error);

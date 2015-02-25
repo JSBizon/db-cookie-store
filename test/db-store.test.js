@@ -42,7 +42,7 @@ function createsCookies () {
                     value : 'value ' + i,
                     httpOnly : false
                 });
-                
+
                 var func = Q.nbind(cookie_store.putCookie, cookie_store);
                 fns.push(func(cookie));
                 keys.push(key);
@@ -50,22 +50,23 @@ function createsCookies () {
     */
 }
 
-describe('Test db cookie store', function() { 
+describe('Test db cookie store', function() {
     var PARALLEL_WRITES = 10;
-    
+
     before(function(done) {
         this.timeout(10000);
         if (typeof databaseCreate == 'function') {
             databaseCreate(function (error) {
                 done(error);
             });
-        } else {            
+        } else {
             done();
         }
     });
 
     after(function (done) {
         if (typeof databaseClean == 'function') {
+            this.timeout(10000);
             databaseClean(function (error) {
                 done(error);
             });
@@ -73,9 +74,9 @@ describe('Test db cookie store', function() {
             done();
         }
     });
-    
+
     describe("#constructor", function () {
-        it('should create object use db options', function (done) {            
+        it('should create object use db options', function (done) {
             var cookie_store = getDBStore();
             expect(cookie_store).to.be.ok();
             expect(cookie_store).to.be.a(DbCookieStore);
@@ -107,7 +108,7 @@ describe('Test db cookie store', function() {
     describe("#putCookie", function () {
         var sequelize, cookie_store;
 
-        beforeEach(function() { 
+        beforeEach(function() {
             cookie_store = getDBStore();
         });
 /*
@@ -126,9 +127,9 @@ describe('Test db cookie store', function() {
                 key = 'yurh%$^9jkjgf&^%$#@!*()',
                 value = '[]{}!@#$%%^&*()_+?',
                 expire = new Date();
-            
+
             expire.setDate(expire.getDate() + 2);
-            
+
             var cookie = new TOUGH.Cookie({
                     domain : domain,
                     path : path,
@@ -169,16 +170,16 @@ describe('Test db cookie store', function() {
         it('should mass put cookies', function (done) {
             this.timeout(10000);
 
-            var i=0, 
-                stores_num = PARALLEL_WRITES, 
-                keys = [], 
-                cookies = [], 
+            var i=0,
+                stores_num = PARALLEL_WRITES,
+                keys = [],
+                cookies = [],
                 fns = [],
                 expire = new Date(),
                 test_domain = 'masstest.com';
-            
+
             expire.setDate(expire.getDate() + 2);
-            
+
             for (i = 0; i < stores_num; i++) {
                 var key = 'key ' + i;
                 var cookie = new TOUGH.Cookie({
@@ -190,7 +191,7 @@ describe('Test db cookie store', function() {
                     value : 'value ' + i,
                     httpOnly : false
                 });
-                
+
                 var func = Q.nbind(cookie_store.putCookie, cookie_store);
                 fns.push(func(cookie));
                 keys.push(key);
@@ -205,20 +206,20 @@ describe('Test db cookie store', function() {
                     expect(cookies).to.be.a(Array);
                     expect(cookies).to.have.length(PARALLEL_WRITES);
                     expect(cookies[0]).to.be.a(TOUGH.Cookie);
-                
+
                     /*
                     var map_key_cookie = {};
-                
+
                     cookies.forEach(function (cookie) {
                         map_key_cookie[cookie.key] = cookie;
                     });
-                
+
                     keys.forEach(function (key) {
                         expect(map_key_cookie[key]).to.be.a(TOUGH.Cookie);
                     });
                     */
                     done();
-                    
+
                 })
                 .catch(function (err){
                     done(err);

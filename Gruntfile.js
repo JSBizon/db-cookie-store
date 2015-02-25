@@ -1,8 +1,8 @@
 module.exports = function(grunt) {
-    
+
     grunt.loadNpmTasks('grunt-contrib-jshint');
     grunt.loadNpmTasks('grunt-mocha-test');
-    
+
     grunt.initConfig({
         pkg: grunt.file.readJSON('package.json'),
         jshint: {
@@ -18,20 +18,19 @@ module.exports = function(grunt) {
                     require: 'test/sqlite-globals',
                     clearRequireCache: true
                 },
-                
+
                 src: ['test/*.test.js']
             },
-            
+
             mysql_test : {
                 options: {
                     reporter: 'spec',
                     require: 'test/mysql-globals',
-                    clearRequireCache: true 
+                    clearRequireCache: true
                 },
                 src: ['test/*.test.js']
             },
-            
-           /*
+
             pgsql_test : {
                 options: {
                     reporter: 'spec',
@@ -40,7 +39,6 @@ module.exports = function(grunt) {
                 },
                 src: ['test/*.test.js']
             }
-            */
         }
     });
 

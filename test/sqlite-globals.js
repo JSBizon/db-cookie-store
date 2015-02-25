@@ -18,7 +18,7 @@ databaseCreate = function (cb) {
 
 databaseClean = function (cb) {
 	try {
-//    	FS.unlinkSync(db_file);
+    	FS.unlinkSync(db_file);
   	} catch (err) {};
 	cb();
 }
