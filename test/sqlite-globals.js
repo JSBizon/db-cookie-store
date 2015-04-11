@@ -7,7 +7,7 @@ DB_USERNAME = null;
 DB_PASSWORD = null;
 DB_OPTIONS = {
     dialect : 'sqlite',
-    //logging : null,
+    logging : null,
     storage: db_file
 };
 
@@ -18,7 +18,7 @@ databaseCreate = function (cb) {
 
 databaseClean = function (cb) {
 	try {
-    	FS.unlinkSync(db_file);
+        FS.unlinkSync(db_file);
   	} catch (err) {};
 	cb();
 }

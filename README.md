@@ -8,10 +8,7 @@ Library uses ORM [Sequelize](http://sequelizejs.com/ "sequalize") and allow stor
 
 ``` javascript
 var DBCookieStore = require('db-cookie-store');
-/*
-	note: it use tough-cookie2 by default, it's available for use with tough-cookie. tough-cookie2 is just fork of tough-cookie with different fixes
-*/
-var CookieJar = require("tough-cookie2").CookieJar; 
+var CookieJar = require("tough-cookie").CookieJar; 
 var jar = new CookieJar(new DBCookieStore(db_name, db_user, db_password, db_options));
 ```
 
