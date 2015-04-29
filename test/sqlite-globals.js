@@ -7,7 +7,7 @@ DB_USERNAME = null;
 DB_PASSWORD = null;
 DB_OPTIONS = {
     dialect : 'sqlite',
-    logging : null,
+    logging : false,
     storage: db_file
 };
 
