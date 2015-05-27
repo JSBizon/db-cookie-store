@@ -8,6 +8,7 @@ DB_PASSWORD = '123';
 DB_OPTIONS = {
     dialect: 'postgres',
     port: 49154,
+    logging : false,
     host: '127.0.0.1'
 };
 
@@ -18,9 +19,7 @@ function getDb() {
 databaseCreate = function(cb) {
     var start_db = getDb();
     start_db.query("SELECT datname FROM pg_catalog.pg_database WHERE datname = '" + DB_NAME + "'").spread(function(dbs, metadata) {
-        console.log("select database: ", dbs);
         if (!dbs.length) {
-            console.log("Create database");
             return start_db.query("CREATE DATABASE " + DB_NAME);
         }
     }).then(function() {

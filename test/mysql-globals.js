@@ -6,7 +6,9 @@ DB_USERNAME = 'root';
 DB_PASSWORD = '123';
 DB_OPTIONS = {
     dialect : 'mysql',
-    port : '49153',
+    //port : '49155',
+    logging: false,
+    port : '3306',
     host: '127.0.0.1'
 };
 

@@ -8,7 +8,9 @@ var expect = require('expect.js'),
     Q =     require('q'),
     extend = require('extend'),
     MemoryCookieStore = require('tough-cookie/lib/memstore').MemoryCookieStore,
-    DbCookieStore = require('../lib/store');
+    DbCookieStore = require('../lib/store'),
+    EventEmitter = require('events').EventEmitter;
+
 
 function randomStr () {
     var text = "";
@@ -28,10 +30,15 @@ function getTableName () {
     return cookies_table_name;
 }
 
-function getDBStore (fields_map, table_name) {
-    var options = extend(true, DB_OPTIONS, {
+function getDBStore (store_schema, table_name) {
+    var options = extend(true, {}, DB_OPTIONS, {
         cookies_table : table_name || getTableName()
     });
+
+    if (store_schema) {
+        options.cookies_store_schema = store_schema;
+    }
+
     return new DbCookieStore(DB_NAME, DB_USERNAME, DB_PASSWORD, options);
 }
 
@@ -182,11 +189,37 @@ function createsCookies (cookie_store, cb) {
     .done();
 }
 
+
+
 describe('Test db cookie store', function() {
-    var PARALLEL_WRITES = 4, cookie_store;
+    this.timeout(40000);
+    var PARALLEL_WRITES = 10, cookie_store;
+
+    function cleanupDB (store_schema, cb) {
+        EventEmitter.defaultMaxListeners = 200;
+        var options = extend(true, DB_OPTIONS, {
+            cookies_table : getTableName()
+        });
+
+        new Sequelize(DB_NAME, DB_USERNAME, DB_PASSWORD, options)
+            .getQueryInterface()
+            .dropTable(getTableName())
+            .then(function() {
+                cookie_store = getDBStore(store_schema);
+                cb();
+            })
+            .catch(function(e) {
+                cb(e);
+            });
+    }
+
+    var store_scheme = ['default', 'mozilla', 'chrome-win'];
+
+    if ( process.platform === 'linux') {
+        store_scheme.push({ name: 'chrome-linux-schema' ,schema : require('../lib/chrome-linux-schema') } );
+    }
 
     before(function(done) {
-        this.timeout(10000);
         if (typeof databaseCreate == 'function') {
             databaseCreate(function (error) {
                 done(error);
@@ -197,8 +230,8 @@ describe('Test db cookie store', function() {
     });
 
     after(function (done) {
+        return done();
         if (typeof databaseClean == 'function') {
-            this.timeout(10000);
             databaseClean(function (error) {
                 done(error);
             });
@@ -208,19 +241,8 @@ describe('Test db cookie store', function() {
     });
 
     beforeEach(function(done) {
-        var options = extend(true, DB_OPTIONS, {
-            cookies_table : getTableName()
-        });
-
-        new Sequelize(DB_NAME, DB_USERNAME, DB_PASSWORD, options)
-        .getQueryInterface()
-        .dropTable(getTableName())
-        .then(function() {
-            cookie_store = getDBStore();
-            done();
-        })
-        .catch(function(e) {
-            done(e);
+        cleanupDB(null, function(err){
+            done(err);
         });
     });
 
@@ -255,18 +277,36 @@ describe('Test db cookie store', function() {
         });
     });
 
-    describe("#putCookie", function () {
 
-        it('should put new cookie to db', function (done) {
-            var domain = 'putcookie.test.com',
-                path = '/',
-                key = 'yurh%$^9jkjgf&^%$#@!*()',
-                value = '[]{}!@#$%%^&*()_+?',
-                expire = new Date();
+    store_scheme.forEach(function (test_store_schema) {
 
-            expire.setDate(expire.getDate() + 2);
+        var store_schema, store_schema_name;
+        if ( typeof test_store_schema === 'string' || test_store_schema instanceof String) {
+            store_schema = test_store_schema;
+            store_schema_name = test_store_schema;
+        } else {
+            store_schema = test_store_schema.schema;
+            store_schema_name = test_store_schema.name;
+        }
 
-            var cookie = new TOUGH.Cookie({
+        describe("#putCookie schema " + store_schema_name, function () {
+
+            beforeEach(function(done) {
+                cleanupDB(store_schema, function(err){
+                    done(err);
+                });
+            });
+
+            it('should put new cookie to db schema ' + store_schema_name , function (done) {
+                var domain = 'putcookie.test.com',
+                    path = '/',
+                    key = 'yurh%$^9jkjgf&^%$#@!*()',
+                    value = '[]{}!@#$%%^&*()_+?',
+                    expire = new Date();
+
+                expire.setDate(expire.getDate() + 2);
+
+                var cookie = new TOUGH.Cookie({
                     domain : domain,
                     path : path,
                     secure : true,
@@ -274,497 +314,555 @@ describe('Test db cookie store', function() {
                     key : key,
                     value : value,
                     httpOnly: true
+                });
+
+                Q.nbind(cookie_store.putCookie, cookie_store)(cookie)
+                    .then(function () {
+                        var findCookies = Q.nbind(cookie_store.findCookies, cookie_store);
+                        return findCookies(domain, null);
+                    })
+                    .then(function (cookies) {
+                        expect(cookies).to.be.a(Array);
+                        expect(cookies).to.have.length(1);
+
+                        var cookie = cookies.pop();
+
+                        expect(cookie).to.be.a(TOUGH.Cookie);
+                        expect(cookie.key).to.be(key);
+                        expect(cookie.value).to.be(value);
+                        expect(Math.round(cookie.expires.getTime()/1000)).to.be(Math.round(expire.getTime()/1000));
+                        expect(cookie.secure).to.be.ok();
+                        expect(cookie.path).to.be('/');
+                        expect(cookie.httpOnly).be.ok();
+
+                        if (store_schema_name == 'mozilla') {
+                            return cookie_store._getModel().then(function (model) {
+                                return model.find({ where: { domain : {'in' : ['.' + domain]}, path : path, key : key} });
+                            });
+                        }
+                    })
+                    .then(function(instance) {
+                        if (store_schema_name == 'mozilla') {
+                            expect(instance.baseDomain).to.be('test.com');
+                        }
+                        done();
+                    })
+                    .catch(function (err) {
+                        done(err);
+                    })
+                    .done();
             });
 
-            Q.nbind(cookie_store.putCookie, cookie_store)(cookie)
-                .then(function () {
-                    var findCookies = Q.nbind(cookie_store.findCookies, cookie_store);
-                    return findCookies(domain, null);
+            it('should mass put cookies schema ' + store_schema_name, function (done) {
+
+                var i=0,
+                    stores_num = PARALLEL_WRITES,
+                    keys = [],
+                    cookies = [],
+                    fns = [],
+                    expire = new Date(),
+                    test_domain = 'masstest.com';
+
+                expire.setDate(expire.getDate() + 2);
+
+                for (i = 0; i < stores_num; i++) {
+                    var key = 'key ' + i;
+                    var cookie = new TOUGH.Cookie({
+                        domain : test_domain,
+                        path : '/',
+                        secure : true,
+                        expires : expire,
+                        key : key,
+                        value : 'value ' + i,
+                        httpOnly : false
+                    });
+
+                    var func = Q.nbind(cookie_store.putCookie, cookie_store);
+                    fns.push(func(cookie));
+                    keys.push(key);
+                }
+
+                Q.all(fns)
+                    .then(function () {
+                        var new_cookie_store = new getDBStore(store_schema);
+                        return Q.nbind(new_cookie_store.findCookies, new_cookie_store)(test_domain, '/');
+                    })
+                    .then(function(cookies) {
+                        expect(cookies).to.be.a(Array);
+                        expect(cookies).to.have.length(PARALLEL_WRITES);
+                        expect(cookies[0]).to.be.a(TOUGH.Cookie);
+
+
+                        var map_key_cookie = {};
+
+                        cookies.forEach(function (cookie) {
+                            map_key_cookie[cookie.key] = cookie;
+                        });
+
+                        keys.forEach(function (key) {
+                            expect(map_key_cookie[key]).to.be.a(TOUGH.Cookie);
+                        });
+
+                        done();
+
+                    })
+                    .catch(function (err){
+                        done(err);
+                    })
+                    .done();
+            });
+
+            it('should put equal cookies schema ' + store_schema_name, function (done) {
+
+                var i=0,
+                    stores_num = PARALLEL_WRITES,
+                    keys = [],
+                    cookies = [],
+                    fns = [],
+                    expire = new Date(),
+                    test_domain = 'masstest.com';
+
+                expire.setDate(expire.getDate() + 2);
+
+                for (i = 0; i < stores_num; i++) {
+                    var key = 'key';
+                    var cookie = new TOUGH.Cookie({
+                        domain : test_domain,
+                        path : '/',
+                        secure : true,
+                        expires : expire,
+                        key : key,
+                        value : 'value ' + i,
+                        httpOnly : false
+                    });
+
+                    var func = Q.nbind(cookie_store.putCookie, cookie_store);
+                    fns.push(func(cookie));
+                    keys.push(key);
+                }
+
+                Q.all(fns)
+                    .then(function () {
+                        var new_cookie_store = new getDBStore(store_schema);
+                        return Q.nbind(new_cookie_store.findCookies, new_cookie_store)(test_domain, '/');
+                    })
+                    .then(function(cookies) {
+                        expect(cookies).to.be.a(Array);
+                        expect(cookies).to.have.length(1);
+                        done();
+                    })
+                    .catch(function (err){
+                        done(err);
+                    })
+                    .done();
+
+            });
+
+            it('wrong argument schema ' + store_schema_name, function (done) {
+                Q.nbind(cookie_store.putCookie, cookie_store)(null).then(function () {
+                    done();
+                })
+                .catch(function (err){
+                    done(err);
+                })
+                .done();
+            });
+        });
+
+    });//store_scheme.forEach(function (store_schema) {
+
+
+    store_scheme.forEach(function (test_store_schema) {
+
+        var store_schema, store_schema_name;
+        if ( typeof test_store_schema === 'string' || test_store_schema instanceof String) {
+            store_schema = test_store_schema;
+            store_schema_name = test_store_schema;
+        } else {
+            store_schema = test_store_schema.schema;
+            store_schema_name = test_store_schema.name;
+        }
+
+        describe("#findCookie " + store_schema_name, function () {
+
+            beforeEach(function(done) {
+
+                cleanupDB(store_schema, function(err){
+                    if (err) {
+                        done(err);
+                    } else {
+                        createsCookies(cookie_store,function (error) {
+                            done(error);
+                        });
+                    }
+                });
+            });
+
+            it ('should find cookie ' + store_schema_name, function (done) {
+                var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
+
+                findCookie('amazon.com', '/', 'skin').then(function (cookie) {
+                    expect(cookie).to.be.a(TOUGH.Cookie);
+                    expect(cookie.key).to.be('skin');
+                    expect(cookie.value).to.be('noskin');
+
+                    expect(cookie.expires).to.be('Infinity');
+                    expect(cookie.secure).not.to.be.ok();
+                    expect(cookie.path).to.be('/');
+                    expect(cookie.httpOnly).not.to.be.ok();
+
+                    done();
+                })
+                .catch(function(err) {
+                    done(err);
+                })
+                .done();
+            });
+
+            it ('should find host only cookie ' + store_schema_name, function (done) {
+                //TOUGH.Cookie.parse("VisitorId=9439ee6f63767329; Expires=Wed, 23 Aug 2056 16:24:07 GMT; Domain=store.com; Path=/"),
+                var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
+                findCookie('store.com', '/', 'VisitorId').then(function (cookie) {
+                    expect(cookie.value).to.be('9439ee6f63767329');
+                    expect(cookie.domain).to.be('store.com');
+                    expect(!cookie.hostOnly).to.be(false);
+                    return findCookie('.store.com', '/', 'VisitorId');
+                })
+                .then(function (cookie){
+                    expect(cookie).to.be.a(TOUGH.Cookie);
+                    expect(cookie.value).to.be('9439ee6f63767329');
+                    expect(cookie.domain).to.be('store.com');
+                    expect(!cookie.hostOnly).to.be(false);
+                    done();
+                })
+                .catch(function(err) {
+                    done(err);
+                })
+                .done();
+            });
+
+            it ('should find not host only cookie ' + store_schema_name, function (done) {
+                var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
+
+                findCookie('.foo.test.com', '/', 'A_auth').then(function (cookie) {
+                    expect(cookie).to.be.a(TOUGH.Cookie);
+                    expect(cookie.key).to.be('A_auth');
+                    expect(cookie.value).to.be('bb5d8798e959f6982f38a31d8e92b7d3');
+                    expect(cookie.domain).to.be('foo.test.com');
+                    expect(!cookie.hostOnly).to.be(true);
+                    return findCookie('foo.test.com', '/', 'A_auth');
+                })
+                .then(function (cookie){
+                    expect(cookie).to.be.a(TOUGH.Cookie);
+                    expect(cookie.key).to.be('A_auth');
+                    expect(cookie.value).to.be('bb5d8798e959f6982f38a31d8e92b7d3');
+                    expect(cookie.domain).to.be('foo.test.com');
+                    expect(!cookie.hostOnly).to.be(true);
+                    done();
+                })
+                .catch(function(err) {
+                    done(err);
+                })
+                .done();
+            });
+
+            it ('should find httpOnly cookie ' + store_schema_name, function (done) {
+                var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
+                findCookie('example.com', '/foo', 'alpha').then(function (cookie) {
+                    expect(cookie).to.be.a(TOUGH.Cookie);
+                    expect(cookie.key).to.be('alpha');
+                    expect(cookie.value).to.be('beta');
+                    expect(cookie.expires.getFullYear()).to.be(2038);
+                    expect(cookie.path).to.be('/foo');
+                    expect(cookie.httpOnly).to.be.ok();
+
+                    done();
+                })
+                .catch(function(err) {
+                    done(err);
+                })
+                .done();
+            });
+
+            it ('should not find cookie(wrong path) ' + store_schema_name, function (done) {
+                var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
+
+                findCookie('example.com', '/', 'alpha').then(function (cookie) {
+                    expect(cookie).not.to.be.ok();
+                    done();
+                })
+                .catch(function(err) {
+                    done(err);
+                })
+                .done();
+            });
+
+            it ('should not find cookie(wrong domain) ' + store_schema_name, function (done) {
+                var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
+                findCookie('example2.com', '/', 'alpha').then(function (cookie) {
+                    expect(cookie).not.to.be.ok();
+                    done();
+                })
+                .catch(function(err) {
+                    done(err);
+                })
+                .done();
+            });
+
+            it ('should find cookie(correct path) ' + store_schema_name, function (done) {
+                var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
+
+                findCookie('example.com', '/foo/boo', 'alpha').then(function (cookie) {
+                    expect(cookie).to.be.a(TOUGH.Cookie);
+                    done();
+                })
+                .catch(function(err) {
+                    done(err);
+                })
+                .done();
+            });
+
+            it ('wrong arguments ' + store_schema_name, function (done) {
+                var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
+                findCookie(null, null, null).then(function (cookie) {
+
+                    expect(cookie).not.to.be.ok();
+
+                    done();
+                })
+                .catch(function(err) {
+                    done(err);
+                })
+                .done();
+            });
+        });
+    });//store_scheme.forEach(function (store_schema) {
+
+
+    store_scheme.forEach(function (test_store_schema) {
+
+        var store_schema, store_schema_name;
+        if ( typeof test_store_schema === 'string' || test_store_schema instanceof String) {
+            store_schema = test_store_schema;
+            store_schema_name = test_store_schema;
+        } else {
+            store_schema = test_store_schema.schema;
+            store_schema_name = test_store_schema.name;
+        }
+
+        describe("#findCookies " + store_schema_name, function () {
+
+
+            beforeEach(function(done) {
+
+                cleanupDB(store_schema, function(err){
+                    if (err) {
+                        done(err);
+                    } else {
+                        createsCookies(cookie_store,function (error) {
+                            done(error);
+                        });
+                    }
+                });
+            });
+
+
+
+            it ('should find all cookies by domain ' + store_schema_name, function (done) {
+                var findCookies = Q.nbind(cookie_store.findCookies, cookie_store);
+
+                findCookies('aff.store.com', null).then(function (cookies) {
+
+                    expect(cookies).to.be.a(Array);
+                    expect(cookies).to.have.length(7);
+                    expect(cookies[0]).to.be.a(TOUGH.Cookie);
+
+                    var num_store_domain = 0,
+                        num_foo_path = 0,
+                        num_aff_store_domain = 0,
+                        num_host_only = 0;
+
+                    cookies.forEach(function(c){
+                        if (c.domain === 'store.com') {
+                            ++num_store_domain;
+                        }
+                        if (c.domain === 'aff.store.com') {
+                            ++num_aff_store_domain;
+                        }
+                        if (c.path === '/foo') {
+                            ++num_foo_path;
+                        }
+                        if (c.hostOnly) {
+                            ++num_host_only;
+                        }
+                    });
+
+                    expect(num_store_domain).to.be(2);
+                    expect(num_aff_store_domain).to.be(5);
+                    expect(num_foo_path).to.be(1);
+                    expect(num_host_only).to.be(3);
+
+                    done();
+                })
+                .catch(function(err) {
+                    done(err);
+                })
+                .done();
+            });
+
+            it ('should find all cookies by domain and path ' + store_schema_name, function (done) {
+                var findCookies = Q.nbind(cookie_store.findCookies, cookie_store);
+
+                findCookies('aff.store.com', '/').then(function (cookies) {
+                    expect(cookies).to.be.a(Array);
+                    expect(cookies).to.have.length(6);
+                    expect(cookies[0]).to.be.a(TOUGH.Cookie);
+
+                    var num_store_domain = 0,
+                        num_foo_path = 0,
+                        num_aff_store_domain = 0,
+                        num_host_only = 0;
+
+                    cookies.forEach(function(c) {
+                        if (c.domain === 'store.com') {
+                            ++num_store_domain;
+                        }
+                        if (c.domain === 'aff.store.com') {
+                            ++num_aff_store_domain;
+                        }
+                        if (c.path === '/foo') {
+                            ++num_foo_path;
+                        }
+                        if (c.hostOnly) {
+                            ++num_host_only;
+                        }
+                    });
+
+                    expect(num_store_domain).to.be(2);
+                    expect(num_aff_store_domain).to.be(4);
+                    expect(num_foo_path).to.be(0);
+                    expect(num_host_only).to.be(3);
+
+                    done();
+                })
+                .catch(function(err) {
+                    done(err);
+                })
+                .done();
+            });
+
+            it ('wrong arguments ' + store_schema_name, function (done) {
+                Q.nbind(cookie_store.findCookies, cookie_store)(undefined, null).then(function (cookies) {
+                    expect(cookies).to.be.a(Array);
+                    expect(cookies).to.have.length(0);
+                    done();
+                })
+                .catch(function(err) {
+                    done(err);
+                })
+                .done();
+            });
+        });
+    });//store_scheme.forEach(function (store_schema) {
+
+
+    store_scheme.forEach(function (test_store_schema) {
+
+        var store_schema, store_schema_name;
+        if ( typeof test_store_schema === 'string' || test_store_schema instanceof String) {
+            store_schema = test_store_schema;
+            store_schema_name = test_store_schema;
+        } else {
+            store_schema = test_store_schema.schema;
+            store_schema_name = test_store_schema.name;
+        }
+
+        describe("#updateCookie " + store_schema_name, function () {
+
+            beforeEach(function(done) {
+
+                cleanupDB(store_schema, function(err){
+                    if (err) {
+                        done(err);
+                    } else {
+                        createsCookies(cookie_store,function (error) {
+                            done(error);
+                        });
+                    }
+                });
+            });
+
+
+            it('should update cookie by putCookie method ' + store_schema_name, function(done) {
+
+                var cookie_store2;
+                var findCookie = Q.nbind(cookie_store.findCookie, cookie_store, 'twitter.com', '/', 'guest_id');
+                findCookie()
+                .then(function(cookie) {
+                    expect(cookie).to.be.a(TOUGH.Cookie);
+                    expect(cookie.key).to.be('guest_id');
+                    expect(cookie.value).to.be('v1:141105733211768497');
+                    cookie.value = 'test value';
+                    return Q.nbind(cookie_store.putCookie, cookie_store)(cookie);
+                })
+                .then(function() {
+                    cookie_store2 = getDBStore(store_schema);
+                    return Q.nbind(cookie_store2.findCookie, cookie_store2,'twitter.com', '/', 'guest_id')();
+                })
+                .then(function(cookie) {
+                    expect(cookie.key).to.be('guest_id');
+                    expect(cookie.value).to.be('test value');
+
+                    //done();
+                    return Q.nbind(cookie_store2.findCookies, cookie_store2,'twitter.com', null)();
                 })
                 .then(function (cookies) {
                     expect(cookies).to.be.a(Array);
                     expect(cookies).to.have.length(1);
 
-                    var cookie = cookies.pop();
+                    done();
+                })
+                .catch(function(err) {
+                    done(err);
+                })
+                .done();
+            });
+
+            it('should update cookie by updateCookie method ' + store_schema_name, function(done) {
+                var findCookie = Q.nbind(cookie_store.findCookie, cookie_store, 'twitter.com', '/', 'guest_id');
+                findCookie()
+                .then(function(cookie) {
 
                     expect(cookie).to.be.a(TOUGH.Cookie);
-                    expect(cookie.key).to.be(key);
-                    expect(cookie.value).to.be(value);
-                    expect(Math.round(cookie.expires.getTime()/1000)).to.be(Math.round(expire.getTime()/1000));
-                    expect(cookie.secure).to.be.ok();
-                    expect(cookie.path).to.be('/');
-                    expect(cookie.httpOnly).be.ok();
+                    expect(cookie.key).to.be('guest_id');
+                    expect(cookie.value).to.be('v1:141105733211768497');
 
+                    var cookie2 = new TOUGH.Cookie(JSON.parse(JSON.stringify(cookie)));
+
+                    cookie2.value = 'test value';
+
+                    return Q.nbind(cookie_store.updateCookie, cookie_store)(cookie, cookie2);
+                })
+                .then(function() {
+                    var cookie_store2 = getDBStore(store_schema);
+                    return Q.nbind(cookie_store2.findCookie, cookie_store2,'twitter.com', '/', 'guest_id')();
+                })
+                .then(function(cookie) {
+                    expect(cookie.key).to.be('guest_id');
+                    expect(cookie.value).to.be('test value');
                     done();
                 })
-                .catch(function (err) {
+                .catch(function(err) {
                     done(err);
                 })
                 .done();
-        });
-
-        it('should mass put cookies', function (done) {
-            this.timeout(20000);
-
-            var i=0,
-                stores_num = PARALLEL_WRITES,
-                keys = [],
-                cookies = [],
-                fns = [],
-                expire = new Date(),
-                test_domain = 'masstest.com';
-
-            expire.setDate(expire.getDate() + 2);
-
-            for (i = 0; i < stores_num; i++) {
-                var key = 'key ' + i;
-                var cookie = new TOUGH.Cookie({
-                    domain : test_domain,
-                    path : '/',
-                    secure : true,
-                    expires : expire,
-                    key : key,
-                    value : 'value ' + i,
-                    httpOnly : false
-                });
-
-                var func = Q.nbind(cookie_store.putCookie, cookie_store);
-                fns.push(func(cookie));
-                keys.push(key);
-            }
-
-            Q.all(fns)
-                .then(function () {
-                    var new_cookie_store = new getDBStore();
-                    return Q.nbind(new_cookie_store.findCookies, new_cookie_store)(test_domain, '/');
-                })
-                .then(function(cookies) {
-                    expect(cookies).to.be.a(Array);
-                    expect(cookies).to.have.length(PARALLEL_WRITES);
-                    expect(cookies[0]).to.be.a(TOUGH.Cookie);
-
-
-                    var map_key_cookie = {};
-
-                    cookies.forEach(function (cookie) {
-                        map_key_cookie[cookie.key] = cookie;
-                    });
-
-                    keys.forEach(function (key) {
-                        expect(map_key_cookie[key]).to.be.a(TOUGH.Cookie);
-                    });
-
-                    done();
-
-                })
-                .catch(function (err){
-                    done(err);
-                }).
-                done();
-        });
-
-        it('should put equal cookies', function (done) {
-            this.timeout(20000);
-
-             var i=0,
-                stores_num = PARALLEL_WRITES,
-                keys = [],
-                cookies = [],
-                fns = [],
-                expire = new Date(),
-                test_domain = 'masstest.com';
-
-            expire.setDate(expire.getDate() + 2);
-
-            for (i = 0; i < stores_num; i++) {
-                var key = 'key';
-                var cookie = new TOUGH.Cookie({
-                    domain : test_domain,
-                    path : '/',
-                    secure : true,
-                    expires : expire,
-                    key : key,
-                    value : 'value ' + i,
-                    httpOnly : false
-                });
-
-                var func = Q.nbind(cookie_store.putCookie, cookie_store);
-                fns.push(func(cookie));
-                keys.push(key);
-            }
-
-            Q.all(fns)
-                .then(function () {
-                    var new_cookie_store = new getDBStore();
-                    return Q.nbind(new_cookie_store.findCookies, new_cookie_store)(test_domain, '/');
-                })
-                .then(function(cookies) {
-                    expect(cookies).to.be.a(Array);
-                    expect(cookies).to.have.length(1);
-                    done();
-                })
-                .catch(function (err){
-                    done(err);
-                })
-                .done();
-
-        });
-
-        it('wrong argument', function (done) {
-            Q.nbind(cookie_store.putCookie, cookie_store)(null).then(function () {
-                done();
-            })
-            .catch(function (err){
-                done(err);
-            })
-            .done();
-        });
-    });
-
-
-    describe("#findCookie", function () {
-
-        beforeEach(function(done) {
-            this.timeout(10000);
-            createsCookies(cookie_store,function (error) {
-                done(error);
-            });
-
-        });
-
-        it ('should find cookie', function (done) {
-            this.timeout(10000);
-            var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
-
-            findCookie('amazon.com', '/', 'skin').then(function (cookie) {
-                expect(cookie).to.be.a(TOUGH.Cookie);
-                expect(cookie.key).to.be('skin');
-                expect(cookie.value).to.be('noskin');
-
-                expect(cookie.expires).to.be('Infinity');
-                expect(cookie.secure).not.to.be.ok();
-                expect(cookie.path).to.be('/');
-                expect(cookie.httpOnly).not.to.be.ok();
-
-                done();
-            })
-            .catch(function(err) {
-                done(err);
-            })
-            .done();
-        });
-
-        it ('should find host only cookie', function (done) {
-            //TOUGH.Cookie.parse("VisitorId=9439ee6f63767329; Expires=Wed, 23 Aug 2056 16:24:07 GMT; Domain=store.com; Path=/"),
-            var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
-            findCookie('store.com', '/', 'VisitorId').then(function (cookie) {
-                expect(cookie.value).to.be('9439ee6f63767329');
-                expect(cookie.domain).to.be('store.com');
-                expect(!cookie.hostOnly).to.be(false);
-                return findCookie('.store.com', '/', 'VisitorId');
-            })
-            .then(function (cookie){
-                expect(cookie).to.be.a(TOUGH.Cookie);
-                expect(cookie.value).to.be('9439ee6f63767329');
-                expect(cookie.domain).to.be('store.com');
-                expect(!cookie.hostOnly).to.be(false);
-                done();
-            })
-            .catch(function(err) {
-                done(err);
-            })
-            .done();
-        });
-
-        it ('should find not host only cookie', function (done) {
-            var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
-
-            findCookie('.foo.test.com', '/', 'A_auth').then(function (cookie) {
-                expect(cookie).to.be.a(TOUGH.Cookie);
-                expect(cookie.key).to.be('A_auth');
-                expect(cookie.value).to.be('bb5d8798e959f6982f38a31d8e92b7d3');
-                expect(cookie.domain).to.be('foo.test.com');
-                expect(!cookie.hostOnly).to.be(true);
-                return findCookie('foo.test.com', '/', 'A_auth');
-            })
-            .then(function (cookie){
-                expect(cookie).to.be.a(TOUGH.Cookie);
-                expect(cookie.key).to.be('A_auth');
-                expect(cookie.value).to.be('bb5d8798e959f6982f38a31d8e92b7d3');
-                expect(cookie.domain).to.be('foo.test.com');
-                expect(!cookie.hostOnly).to.be(true);
-                done();
-            })
-            .catch(function(err) {
-                done(err);
-            })
-            .done();
-        });
-
-        it ('should find httpOnly cookie', function (done) {
-            var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
-            findCookie('example.com', '/foo', 'alpha').then(function (cookie) {
-                expect(cookie).to.be.a(TOUGH.Cookie);
-                expect(cookie.key).to.be('alpha');
-                expect(cookie.value).to.be('beta');
-                expect(cookie.expires.getFullYear()).to.be(2038);
-                expect(cookie.path).to.be('/foo');
-                expect(cookie.httpOnly).to.be.ok();
-
-                done();
-            }).
-            catch(function(err) {
-                done(err);
-            }).
-            done();
-        });
-
-        it ('should not find cookie(wrong path)', function (done) {
-            var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
-
-            findCookie('example.com', '/', 'alpha').then(function (cookie) {
-                expect(cookie).not.to.be.ok();
-                done();
-            }).
-            catch(function(err) {
-                done(err);
-            }).
-            done();
-        });
-
-        it ('should not find cookie(wrong domain)', function (done) {
-            var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
-            findCookie('example2.com', '/', 'alpha').then(function (cookie) {
-                expect(cookie).not.to.be.ok();
-                done();
-            }).
-            catch(function(err) {
-                done(err);
-            }).
-            done();
-        });
-
-        it ('should find cookie(correct path)', function (done) {
-            var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
-
-            findCookie('example.com', '/foo/boo', 'alpha').then(function (cookie) {
-                expect(cookie).to.be.a(TOUGH.Cookie);
-                done();
-            }).
-            catch(function(err) {
-                done(err);
-            }).
-            done();
-        });
-
-        it ('wrong arguments', function (done) {
-            var findCookie = Q.nbind(cookie_store.findCookie, cookie_store);
-            findCookie(null, null, null).then(function (cookie) {
-
-                expect(cookie).not.to.be.ok();
-
-                done();
-            }).
-            catch(function(err) {
-                done(err);
-            }).
-            done();
-        });
-    });
-
-
-    describe("#findCookies", function () {
-        beforeEach(function(done) {
-            this.timeout(10000);
-            createsCookies(cookie_store,function (error) {
-                done(error);
             });
         });
+    });//store_scheme.forEach(function (store_schema) {
 
-        it ('should find all cookies by domain', function (done) {
-            this.timeout(10000);
-            var findCookies = Q.nbind(cookie_store.findCookies, cookie_store);
-
-            findCookies('aff.store.com', null).then(function (cookies) {
-
-                expect(cookies).to.be.a(Array);
-                expect(cookies).to.have.length(7);
-                expect(cookies[0]).to.be.a(TOUGH.Cookie);
-
-                var num_store_domain = 0,
-                    num_foo_path = 0,
-                    num_aff_store_domain = 0,
-                    num_host_only = 0;
-
-                cookies.forEach(function(c){
-                    if (c.domain === 'store.com') {
-                        ++num_store_domain;
-                    }
-                    if (c.domain === 'aff.store.com') {
-                        ++num_aff_store_domain;
-                    }
-                    if (c.path === '/foo') {
-                        ++num_foo_path;
-                    }
-                    if (c.hostOnly) {
-                        ++num_host_only;
-                    }
-                });
-
-                expect(num_store_domain).to.be(2);
-                expect(num_aff_store_domain).to.be(5);
-                expect(num_foo_path).to.be(1);
-                expect(num_host_only).to.be(3);
-
-
-                done();
-            }).
-            catch(function(err) {
-                done(err);
-            }).
-            done();
-        });
-
-        it ('should find all cookies by domain and path', function (done) {
-            this.timeout(10000);
-            var findCookies = Q.nbind(cookie_store.findCookies, cookie_store);
-
-            findCookies('aff.store.com', '/').then(function (cookies) {
-                expect(cookies).to.be.a(Array);
-                expect(cookies).to.have.length(6);
-                expect(cookies[0]).to.be.a(TOUGH.Cookie);
-
-                var num_store_domain = 0,
-                    num_foo_path = 0,
-                    num_aff_store_domain = 0,
-                    num_host_only = 0;
-
-                cookies.forEach(function(c) {
-                    if (c.domain === 'store.com') {
-                        ++num_store_domain;
-                    }
-                    if (c.domain === 'aff.store.com') {
-                        ++num_aff_store_domain;
-                    }
-                    if (c.path === '/foo') {
-                        ++num_foo_path;
-                    }
-                    if (c.hostOnly) {
-                        ++num_host_only;
-                    }
-                });
-
-                expect(num_store_domain).to.be(2);
-                expect(num_aff_store_domain).to.be(4);
-                expect(num_foo_path).to.be(0);
-                expect(num_host_only).to.be(3);
-
-                done();
-            }).
-            catch(function(err) {
-                done(err);
-            }).
-            done();
-        });
-
-        it ('wrong arguments', function (done) {
-            this.timeout(10000);
-            Q.nbind(cookie_store.findCookies, cookie_store)(undefined, null).then(function (cookies) {
-                expect(cookies).to.be.a(Array);
-                expect(cookies).to.have.length(0);
-                done();
-            }).
-            catch(function(err) {
-                done(err);
-            }).
-            done();
-        });
-
-    });
-
-    describe("#updateCookie", function () {
-
-        beforeEach(function(done) {
-            this.timeout(10000);
-            createsCookies(cookie_store,function (error) {
-                done(error);
-            });
-        });
-
-
-        it('should update cookie by putCookie method', function(done) {
-            var cookie_store2;
-            var findCookie = Q.nbind(cookie_store.findCookie, cookie_store, 'twitter.com', '/', 'guest_id');
-            findCookie().
-            then(function(cookie) {
-
-                expect(cookie).to.be.a(TOUGH.Cookie);
-                expect(cookie.key).to.be('guest_id');
-                expect(cookie.value).to.be('v1:141105733211768497');
-                cookie.value = 'test value';
-
-                return Q.nbind(cookie_store.putCookie, cookie_store)(cookie);
-            }).
-            then(function() {
-                cookie_store2 = getDBStore();
-                return Q.nbind(cookie_store2.findCookie, cookie_store2,'twitter.com', '/', 'guest_id')();
-            }).
-            then(function(cookie) {
-
-                expect(cookie.key).to.be('guest_id');
-                expect(cookie.value).to.be('test value');
-
-                //done();
-                return Q.nbind(cookie_store2.findCookies, cookie_store2,'twitter.com', null)();
-            }).
-            then(function (cookies) {
-                expect(cookies).to.be.a(Array);
-                expect(cookies).to.have.length(1);
-
-                done();
-            }).
-            catch(function(err) {
-                done(err);
-            }).
-            done();
-        });
-
-        it('should update cookie by updateCookie method', function(done) {
-            var findCookie = Q.nbind(cookie_store.findCookie, cookie_store, 'twitter.com', '/', 'guest_id');
-            findCookie().
-            then(function(cookie) {
-
-                expect(cookie).to.be.a(TOUGH.Cookie);
-                expect(cookie.key).to.be('guest_id');
-                expect(cookie.value).to.be('v1:141105733211768497');
-
-                var cookie2 = new TOUGH.Cookie(JSON.parse(JSON.stringify(cookie)));
-
-                cookie2.value = 'test value';
-
-                return Q.nbind(cookie_store.updateCookie, cookie_store)(cookie, cookie2);
-            }).
-            then(function() {
-                var cookie_store2 = getDBStore();
-                return Q.nbind(cookie_store2.findCookie, cookie_store2,'twitter.com', '/', 'guest_id')();
-            }).
-            then(function(cookie) {
-
-                expect(cookie.key).to.be('guest_id');
-                expect(cookie.value).to.be('test value');
-
-                done();
-            }).
-            catch(function(err) {
-                done(err);
-            }).
-            done();
-        });
-    });
 
     describe("#removeCookie", function () {
         beforeEach(function(done) {
-            this.timeout(10000);
             createsCookies(cookie_store,function (error) {
                 done(error);
             });
@@ -807,7 +905,6 @@ describe('Test db cookie store', function() {
 
     describe("#removeCookies", function () {
         beforeEach(function(done) {
-            this.timeout(10000);
             createsCookies(cookie_store,function (error) {
                 done(error);
             });
@@ -819,7 +916,6 @@ describe('Test db cookie store', function() {
 
             Q.nbind(cookie_store.findCookies, cookie_store)(test_domain, null).
                 then(function (cookies) {
-                    console.log("Cookies: ", cookies);
                     expect(cookies).to.be.a(Array);
                     expect(cookies).to.have.length(2);
                     return  Q.nbind(cookie_store.removeCookies, cookie_store)(test_domain, null);
@@ -881,7 +977,6 @@ describe('Test db cookie store', function() {
 
     describe("#export", function () {
         beforeEach(function(done) {
-            this.timeout(10000);
             createsCookies(cookie_store,function (error) {
                 done(error);
             });
@@ -953,7 +1048,6 @@ describe('Test db cookie store', function() {
     describe("#CookieJar", function () {
         var cookie_jar;
         beforeEach(function(done) {
-            this.timeout(10000);
             createsCookies(cookie_store,function (error) {
                 if (! error) {
                     cookie_jar = new TOUGH.CookieJar(cookie_store);
@@ -968,7 +1062,6 @@ describe('Test db cookie store', function() {
         });
 
          it('should find cookie in CookieJar', function (done) {
-            this.timeout(10000);
             Q.nbind(cookie_jar.getCookies, cookie_jar)('http://foo.test.com')
                 .then(function (cookies) {
                     expect(cookies).to.be.a(Array);
@@ -1200,7 +1293,6 @@ describe('Test db cookie store', function() {
         });
 
         it('should remove expired Cookie from CookieJar', function (done) {
-            this.timeout(10000);
             var expire = new Date();
 
             expire.setDate(expire.getDate() - 2);
@@ -1221,8 +1313,18 @@ describe('Test db cookie store', function() {
                     expect(cookies).to.be.a(Array);
                     expect(cookies).to.have.length(0);
 
-                    var cookie_store2 = getDBStore();
-                    return Q.nbind(cookie_store2.findCookies, cookie_store2)('setcookietest.com', null);
+                    return new Sequelize.Promise(function (resolve, rejected) {
+                        setTimeout(function () {
+                            var cookie_store2 = getDBStore();
+                            Q.nbind(cookie_store2.findCookies, cookie_store2)('setcookietest.com', null)
+                            .then(function(cookies) {
+                                resolve(cookies);
+                            })
+                            .catch(function(err){
+                                rejected(err);
+                            });
+                        }, 1000)
+                    });
                 })
                 .then( function (cookies) {
                     expect(cookies).to.be.a(Array);
@@ -1239,7 +1341,6 @@ describe('Test db cookie store', function() {
         });
 
         it('should save "host only" cookies correctly', function (done) {
-            this.timeout(10000);
             var cookies_urls = ['http://aff.store.com/',
                                 'http://www.aff.store.com/',
                                 'http://store.com',
@@ -1251,7 +1352,7 @@ describe('Test db cookie store', function() {
             }
 
             var cookie_table_name = randomStr(),
-                cookie_store2 = getDBStore(null, cookie_table_name),
+                cookie_store2 = getDBStore(null,cookie_table_name),
                 cookie_jar2 = new TOUGH.CookieJar(cookie_store2);
 
             Q.all(fns).spread(function(cookies1,cookies2,cookies3,cookies4){
