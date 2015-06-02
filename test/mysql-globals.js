@@ -2,8 +2,13 @@ var Sequelize = require('sequelize');
 
 DB_TEMPLATE_NAME = 'mysql';
 DB_NAME = 'cookies_test';
+/*
 DB_USERNAME = 'root';
 DB_PASSWORD = '123';
+*/
+DB_USERNAME = 'root';
+DB_PASSWORD = '';
+
 DB_OPTIONS = {
     dialect : 'mysql',
     //port : '49155',
