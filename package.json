@@ -31,7 +31,8 @@
     "mysql" : "~2.5.0",
     "pg" : "~4.2.0",
     "pg-hstore" : "~2.3.0",
-    "tldjs": ">=1.5.0"
+    "tldjs": ">=1.5.0",
+    "int": ">=0.2.0"
   },
   "dependencies": {
     "tough-cookie" : "~0.12.0",
