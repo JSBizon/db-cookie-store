@@ -2,12 +2,12 @@ var Sequelize = require('sequelize');
 
 DB_TEMPLATE_NAME = 'template1';
 DB_NAME = 'cookies_test';
-DB_USERNAME = 'test';
-DB_PASSWORD = '123';
+DB_USERNAME = 'postgres';
+DB_PASSWORD = '';
 
 DB_OPTIONS = {
     dialect: 'postgres',
-    port: 49154,
+    port: 5432,
     logging : false,
     host: '127.0.0.1'
 };

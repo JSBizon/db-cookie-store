@@ -37,7 +37,7 @@ Class DbCookieStore has options:
 
 #### Store schema
 
-Store schema describe how cookies data will be stored to the database. Store schema define columns name and type. For example this is columns of _default_ schema:
+Store schema describes how cookies data will be stored to the database. Store schema defines columns name and type. For example there are columns for _default_ schema:
 
 ```javascript
 fields_map : {
@@ -57,8 +57,35 @@ fields_map : {
 
 this means cookies attribute _key_ will be writed(or readed) to the column _key_ with type _TEXT_, cookies attribute _expires_ will be writed to the column _expires_ with type _INTEGER_, etc. Supported all options which supported by [sequalize define method](http://docs.sequelizejs.com/en/latest/api/sequelize/#definemodelname-attributes-options-model "sequalize define method").
 
+There are exists next pre-defined schemas: _default_, _mozilla_, _chrome-win_.
 
+You can define your own schema. Usually schema is a hash with fields: fields_map, options, init:
 
+```javascript
+var my_schema = {
+  //sequalize fields description
+  fields_map : {
+  .....
+  },
+  //sequalize options
+  options : {
+    timestamps: false,
+    indexes : [
+      {fields : [{attribute : "domain", length : 25}]},
+      {fields : [{attribute: "key", length : 25}, {attribute : "domain", length: 25},
+      {attribute : "path", length: 25}] }
+    ]
+  },
+
+  //should return Promise, will be called before model created
+  init: function () {
+    return new Sequelize.Promise(function (resolve, reject) {
+        ......
+      });
+    }
+  }
+}
+```
 
 #### Export cookies
 
@@ -75,9 +102,34 @@ cookie_store.export(new MemoryCookieStore(),function(memory_cookie_store) {
 ```
 
 ## Examples
+Using this module with 'cookies_store_schema' parameter allow to read/write cookies from/to different cookies storages
 
 #### Read/Write cookies from firefox cookies storage
+Firefox uses Sqlite database for store cookies. So cookies could be readed and writed via CookieJar:
 
-#### Read/Write cookies from chrome cookies storage
+``` javascript
+var DBCookieStore = require('db-cookie-store');
+var CookieJar = require("tough-cookie").CookieJar;
+
+var cookie_jar = new CookieJar(new DBCookieStore(null,null,null,{
+    cookies_store_schema : 'mozilla', //use pre-defined fields set
+    dialect : 'sqlite',
+    storage: './cookies.sqlite',
+}));
+```
+
 
 #### Read/Write cookies from chrome cookies storage(Linux)
+Chrome uses uses Sqlite database for store cookies. Chrome for linux decode values of cookies. Encoding/decoding is implemented in chrome store schema:
+
+``` javascript
+var DBCookieStore = require('db-cookie-store');
+var CookieJar = require("tough-cookie").CookieJar;
+var chrome_schema = require('db-cookie-store/lib/chrome-linux-schema'); //load chrome schema
+
+var cookie_jar = new CookieJar(new DBCookieStore(null,null,null,{
+    cookies_store_schema : chrome_schema, //use loaded fieldset
+    dialect : 'sqlite',
+    storage: './Cookies',
+}));
+```
