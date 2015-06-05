@@ -1,4 +1,4 @@
-
+[![Build Status](https://travis-ci.org/JSBizon/db-cookie-store.svg?branch=master)](https://travis-ci.org/JSBizon/db-cookie-store)
 # Introduction
 
 db-cookie-store - this is database based store for cookie management library [tough cookie](https://github.com/goinstant/tough-cookie "tough cookie").
