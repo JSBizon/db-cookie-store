@@ -1,6 +1,6 @@
 {
   "name": "db-cookie-store",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Store cookies in database",
   "main": "lib/store.js",
   "repository":  {
@@ -26,7 +26,7 @@
     "grunt": "~0.4",
     "grunt-cli": "~0.1.13",
     "grunt-mocha-test" : "~0.12.2",
-    "grunt-contrib-jshint" : "~0.10.0",
+    "grunt-contrib-jshint" : "~0.11.2",
     "q": "~1.0.1",
     "mysql" : "~2.5.0",
     "pg" : "~4.2.0",
@@ -35,7 +35,7 @@
     "int": ">=0.2.0"
   },
   "dependencies": {
-    "tough-cookie" : "~0.12.0",
+    "tough-cookie" : "~2.0.0",
     "punycode" : "~1.2.3",
     "sequelize" : "~2.0.0",
     "sqlite3" : "~3.0.0"

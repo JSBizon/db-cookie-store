@@ -6,14 +6,14 @@ DB_NAME = 'cookies_test';
 DB_USERNAME = 'root';
 DB_PASSWORD = '123';
 */
-DB_USERNAME = 'root';
-DB_PASSWORD = '';
+DB_USERNAME = process.env.MYSQL_DB_USERNAME || 'root';
+DB_PASSWORD = process.env.MYSQL_DB_PASSWORD || '';
 
 DB_OPTIONS = {
     dialect : 'mysql',
     //port : '49155',
     logging: false,
-    port : '3306',
+    port : process.env.MYSQL_DB_PORT  || '3306',
     host: '127.0.0.1'
 };
 

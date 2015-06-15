@@ -2,12 +2,18 @@ var Sequelize = require('sequelize');
 
 DB_TEMPLATE_NAME = 'template1';
 DB_NAME = 'cookies_test';
-DB_USERNAME = 'postgres';
-DB_PASSWORD = '';
 
+DB_USERNAME = process.env.PG_DB_USERNAME || 'postgres';
+DB_PASSWORD = process.env.PG_DB_PASSWORD || '';
+
+/*
+DB_USERNAME = 'test';
+DB_PASSWORD = '123';
+*/
 DB_OPTIONS = {
     dialect: 'postgres',
-    port: 5432,
+    port: process.env.PG_DB_PORT  || 5432,
+//    port: 49154,
     logging : false,
     host: '127.0.0.1'
 };

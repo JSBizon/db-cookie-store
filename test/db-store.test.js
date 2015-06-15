@@ -14,7 +14,7 @@ var expect = require('expect.js'),
 
 function randomStr () {
     var text = "";
-    var possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    var possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
     for( var i=0; i < 10; i++ )
         text += possible.charAt(Math.floor(Math.random() * possible.length))
     return text;
@@ -230,7 +230,6 @@ describe('Test db cookie store', function() {
     });
 
     after(function (done) {
-        return done();
         if (typeof databaseClean == 'function') {
             databaseClean(function (error) {
                 done(error);
@@ -1043,6 +1042,39 @@ describe('Test db cookie store', function() {
                 })
                 .done();
         });
+
+        it('#getAllCookies',function(done){
+            Q.nbind(cookie_store.getAllCookies, cookie_store)().
+                then(function (cookies) {
+                    expect(cookies).to.be.a(Array);
+                    expect(cookies).to.have.length(test_cookies.length - 1);
+
+
+                    var is_key = false, num_store_domain = 0, num_foo_test = 0;
+                    cookies.forEach(function (cookie) {
+                        if (cookie.key === 'A_pap_sid') {
+                            is_key = true;
+                        }
+                        if (cookie.domain === 'store.com') {
+                            ++num_store_domain;
+                        }
+                        if (cookie.domain === 'foo.test.com') {
+                            ++num_foo_test;
+                        }
+                    });
+
+                    expect(is_key).to.be(true);
+                    expect(num_store_domain).to.be(2);
+                    expect(num_foo_test).to.be(1);
+
+
+                    done();
+                }).
+                catch(function (err) {
+                    done(err);
+                }).
+                done();
+        });
     });
 
     describe("#CookieJar", function () {
@@ -1390,6 +1422,19 @@ describe('Test db cookie store', function() {
             }).
             done();
 
+        });
+
+        it('#serialize', function (done) {
+            Q.nbind(cookie_jar.serialize, cookie_jar)()
+                .then(function (serialized_object) {
+                    expect(serialized_object.cookies).to.be.a(Array);
+                    expect(serialized_object.cookies).to.have.length(test_cookies.length - 1);
+                    done();
+                })
+                .catch(function(err){
+                    done(err);
+                })
+                .done();
         });
 
     });
