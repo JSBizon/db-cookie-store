@@ -17,6 +17,8 @@
                "tough-cookie",
                "database",
                "cookie store",
+               "Sequelize",
+               "tough-cookie store",
                "database cookie store"
   ],
   "devDependencies" : {
